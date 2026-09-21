@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { ReactNode } from 'react';
 import { Icon } from '@/components/workspace/icons';
+import { getJobCandidates } from '@/components/workspace/format';
 import { useWorkspace } from '@/components/workspace/workspace-provider';
 
 const navItems = [
@@ -18,6 +19,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { jobs, candidates, syncStatus, syncMessage } = useWorkspace();
   const activeJobId = pathname.match(/^\/jobs\/([^/]+)/)?.[1] || 'job-1';
+  const activeJobCandidateCount = getJobCandidates(candidates, activeJobId).length;
 
   return <div className="app-shell">
     <aside className="sidebar">
@@ -31,7 +33,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         {navItems.map((item) => {
           const active = item.href === '/' ? pathname === '/' : pathname === item.href || pathname.startsWith(item.href.replace('/job-1/candidates', '/jobs/')) || (item.label === 'Jobs' && pathname.startsWith('/jobs'));
           const href = item.label === 'Candidates' ? `/jobs/${activeJobId}/candidates` : item.href;
-          return <Link className={`nav-item ${active ? 'active' : ''}`} href={href} key={item.label}><Icon name={item.icon} size={17} /><span>{item.label}</span>{item.label === 'Candidates' && <span className="nav-badge">{candidates.length}</span>}</Link>;
+          return <Link className={`nav-item ${active ? 'active' : ''}`} href={href} key={item.label}><Icon name={item.icon} size={17} /><span>{item.label}</span>{item.label === 'Candidates' && <span className="nav-badge">{activeJobCandidateCount}</span>}</Link>;
         })}
       </nav>
       <div className="sidebar-spacer" />

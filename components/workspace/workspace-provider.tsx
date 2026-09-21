@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from 'react';
-import { deleteJob as deleteJobRecord, loadWorkspace, persistApplication, persistCandidate, persistJob, uploadCandidateFile } from '@/lib/firestore';
+import { deleteCandidate as deleteCandidateRecord, deleteJob as deleteJobRecord, loadWorkspace, persistApplication, persistCandidate, persistJob, uploadCandidateFile } from '@/lib/firestore';
 import { demoCandidates, demoJobs } from '@/lib/mock-data';
 import { Application, Candidate, Job, SyncStatus } from '@/types/ats';
 
@@ -17,7 +17,9 @@ type WorkspaceContextValue = {
   saveApplication: (application: Application) => Promise<void>;
   addJob: (job: Job) => Promise<void>;
   deleteJob: (jobId: string) => Promise<void>;
+  deleteCandidate: (candidateId: string) => Promise<void>;
   addCandidate: (candidate: Candidate) => Promise<void>;
+  addCandidates: (candidates: Candidate[]) => Promise<void>;
   uploadCv: (candidate: Candidate, file: File) => Promise<void>;
 };
 
@@ -41,14 +43,21 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       console.warn('Firebase sync unavailable:', error);
       if (!mounted) return;
       setSyncStatus('offline');
-      setSyncMessage('Demo data · offline');
+      setSyncMessage('Offline · changes are not saved');
     });
     return () => { mounted = false; };
   }, []);
 
-  const safeSync = async (operation: () => Promise<void>) => {
-    if (syncStatus !== 'connected') return;
-    try { await operation(); } catch (error) { console.warn('Firebase sync failed:', error); setSyncStatus('offline'); setSyncMessage('Demo data · offline'); }
+  const sync = async <T,>(operation: () => Promise<T>) => {
+    if (syncStatus !== 'connected') throw new Error('Workspace is not connected to Firebase yet. Please try again in a moment.');
+    try {
+      return await operation();
+    } catch (error) {
+      console.warn('Firebase sync failed:', error);
+      setSyncStatus('offline');
+      setSyncMessage('Sync failed · changes not saved');
+      throw new Error('Firebase could not save this change. Check your connection and try again.');
+    }
   };
 
   const value = useMemo<WorkspaceContextValue>(() => ({
@@ -58,28 +67,52 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     syncMessage,
     getJob: (id) => jobs.find((job) => job.id === id),
     getCandidate: (id) => candidates.find((candidate) => candidate.id === id),
-    saveJob: async (job) => { setJobs((items) => items.map((item) => item.id === job.id ? job : item)); await safeSync(() => persistJob(job)); },
-    saveCandidate: async (candidate) => { setCandidates((items) => items.map((item) => item.id === candidate.id ? candidate : item)); await safeSync(() => persistCandidate(candidate)); },
-    saveApplication: async (application) => {
-      setCandidates((items) => items.map((candidate) => candidate.id === application.candidateId ? { ...candidate, applications: { ...candidate.applications, [application.jobId]: application } } : candidate));
-      await safeSync(() => persistApplication(application));
+    saveJob: async (job) => {
+      await sync(() => persistJob(job));
+      setJobs((items) => items.map((item) => item.id === job.id ? job : item));
     },
-    addJob: async (job) => { setJobs((items) => [job, ...items]); await safeSync(() => persistJob(job)); },
+    saveCandidate: async (candidate) => {
+      await sync(() => persistCandidate(candidate));
+      setCandidates((items) => items.map((item) => item.id === candidate.id ? candidate : item));
+    },
+    saveApplication: async (application) => {
+      await sync(() => persistApplication(application));
+      setCandidates((items) => items.map((candidate) => candidate.id === application.candidateId ? { ...candidate, applications: { ...candidate.applications, [application.jobId]: application } } : candidate));
+    },
+    addJob: async (job) => {
+      await sync(() => persistJob(job));
+      setJobs((items) => [job, ...items.filter((item) => item.id !== job.id)]);
+    },
     deleteJob: async (jobId) => {
+      await sync(() => deleteJobRecord(jobId));
       setJobs((items) => items.filter((job) => job.id !== jobId));
       setCandidates((items) => items.map((candidate) => {
         if (!candidate.applications[jobId]) return candidate;
         const { [jobId]: _removed, ...applications } = candidate.applications;
-        return { ...candidate, applications } }));
-      await safeSync(() => deleteJobRecord(jobId));
+        return { ...candidate, applications };
+      }));
     },
-    addCandidate: async (candidate) => { setCandidates((items) => [candidate, ...items]); await safeSync(() => persistCandidate(candidate)); },
+    deleteCandidate: async (candidateId) => {
+      await sync(() => deleteCandidateRecord(candidateId));
+      setCandidates((items) => items.filter((candidate) => candidate.id !== candidateId));
+    },
+    addCandidate: async (candidate) => {
+      await sync(() => persistCandidate(candidate));
+      setCandidates((items) => [candidate, ...items.filter((item) => item.id !== candidate.id)]);
+    },
+    addCandidates: async (newCandidates) => {
+      if (!newCandidates.length) return;
+      await sync(() => Promise.all(newCandidates.map((candidate) => persistCandidate(candidate))).then(() => undefined));
+      setCandidates((items) => {
+        const incoming = new Map(newCandidates.map((candidate) => [candidate.id, candidate]));
+        return [...incoming.values(), ...items.filter((candidate) => !incoming.has(candidate.id))];
+      });
+    },
     uploadCv: async (candidate, file) => {
-      if (syncStatus !== 'connected') return;
-      const cvUrl = await uploadCandidateFile(candidate.id, file);
+      const cvUrl = await sync(() => uploadCandidateFile(candidate.id, file));
       const next = { ...candidate, cvUrl, cvName: file.name };
-      setCandidates((items) => items.map((item) => item.id === candidate.id ? next : item));
-      await safeSync(() => persistCandidate(next));
+      await sync(() => persistCandidate(next));
+      setCandidates((items) => [next, ...items.filter((item) => item.id !== candidate.id)]);
     },
   }), [jobs, candidates, syncStatus, syncMessage]);
 

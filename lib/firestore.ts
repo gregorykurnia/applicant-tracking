@@ -1,11 +1,13 @@
 import { signInAnonymously } from 'firebase/auth';
-import { collection, deleteDoc, doc, getDocs, query, setDoc, where } from 'firebase/firestore';
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, where } from 'firebase/firestore';
+import { deleteObject, getDownloadURL, listAll, ref, uploadBytes } from 'firebase/storage';
 import { auth, db, storage } from '@/lib/firebase';
 import { demoCandidates, demoJobs } from '@/lib/mock-data';
 import { Application, Candidate, Job } from '@/types/ats';
 
 export type WorkspaceSnapshot = { jobs: Job[]; candidates: Candidate[]; seeded: boolean };
+
+const workspaceMetaRef = doc(db, 'workspaceMeta', 'default');
 
 function cleanRecord<T>(value: T): T {
   if (Array.isArray(value)) return value.map(cleanRecord) as T;
@@ -22,6 +24,16 @@ export async function deleteJob(jobId: string) {
   await Promise.all([
     deleteDoc(doc(db, 'jobs', jobId)),
     ...applications.docs.map((application) => deleteDoc(application.ref)),
+  ]);
+}
+
+export async function deleteCandidate(candidateId: string) {
+  const applications = await getDocs(query(collection(db, 'applications'), where('candidateId', '==', candidateId)));
+  const candidateFiles = await listAll(ref(storage, `cvs/${candidateId}`)).catch(() => ({ items: [] }));
+  await Promise.all([
+    deleteDoc(doc(db, 'candidates', candidateId)),
+    ...applications.docs.map((application) => deleteDoc(application.ref)),
+    ...candidateFiles.items.map((file) => deleteObject(file)),
   ]);
 }
 
@@ -46,18 +58,21 @@ async function seedWorkspace() {
     ...demoJobs.map((job) => persistJob(job)),
     ...demoCandidates.map((candidate) => persistCandidate(candidate)),
   ]);
+  await setDoc(workspaceMetaRef, { initialized: true }, { merge: true });
   return { jobs: demoJobs, candidates: demoCandidates, seeded: true } satisfies WorkspaceSnapshot;
 }
 
 export async function loadWorkspace(): Promise<WorkspaceSnapshot> {
   await signInAnonymously(auth);
-  const [jobSnapshot, candidateSnapshot, applicationSnapshot] = await Promise.all([
+  const [metaSnapshot, jobSnapshot, candidateSnapshot, applicationSnapshot] = await Promise.all([
+    getDoc(workspaceMetaRef),
     getDocs(collection(db, 'jobs')),
     getDocs(collection(db, 'candidates')),
     getDocs(collection(db, 'applications')),
   ]);
 
-  if (jobSnapshot.empty && candidateSnapshot.empty) return seedWorkspace();
+  if (!metaSnapshot.exists() && jobSnapshot.empty && candidateSnapshot.empty) return seedWorkspace();
+  if (!metaSnapshot.exists()) await setDoc(workspaceMetaRef, { initialized: true }, { merge: true });
 
   const jobs = jobSnapshot.docs.map((item) => ({ id: item.id, ...item.data() } as Job));
   const candidates = candidateSnapshot.docs.map((item) => ({ id: item.id, applications: {}, ...item.data() } as Candidate));

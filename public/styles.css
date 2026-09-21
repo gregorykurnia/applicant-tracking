@@ -355,6 +355,15 @@ h3 { font-size: 15px; letter-spacing: -.01em; margin-bottom: 4px; }
 .employment-item strong { display: block; font-size: 13px; }
 .employment-item span { color: var(--muted); font-size: 12px; display: block; margin-top: 2px; }
 .note-box { background: #fffbf1; border: 1px solid #f6e5bb; color: #7d5a28; border-radius: 8px; padding: 11px 12px; font-size: 13px; }
+.form-error { color: var(--danger); background: var(--danger-soft); border: 1px solid #f7dfe1; border-radius: 8px; padding: 10px 12px; font-size: 13px; margin: 0 0 14px; }
+.import-notes { display: grid; gap: 3px; color: var(--muted); background: #fafbfe; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-top: 12px; font-size: 12px; }
+.import-notes strong { color: var(--ink); }
+.import-preview { margin-top: 14px; max-height: 300px; border: 1px solid var(--line); border-radius: 8px; }
+.import-preview .candidate-table { min-width: 620px; }
+.import-preview td, .import-preview th { padding-left: 12px; padding-right: 12px; }
+.import-preview td strong, .import-preview td .muted { display: block; }
+.import-preview td .muted { color: var(--subtle); font-size: 11px; margin-top: 2px; }
+.import-more { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
 
 .toast-region { position: fixed; z-index: 50; right: 22px; bottom: 22px; display: grid; gap: 8px; }
 .toast { display: flex; gap: 9px; align-items: center; background: #1e2a3e; color: white; border-radius: 8px; padding: 11px 14px; box-shadow: var(--shadow); font-size: 13px; animation: toast-in .18s ease-out; }
