@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from 'react';
-import { loadWorkspace, persistApplication, persistCandidate, persistJob, uploadCandidateFile } from '@/lib/firestore';
+import { deleteJob as deleteJobRecord, loadWorkspace, persistApplication, persistCandidate, persistJob, uploadCandidateFile } from '@/lib/firestore';
 import { demoCandidates, demoJobs } from '@/lib/mock-data';
 import { Application, Candidate, Job, SyncStatus } from '@/types/ats';
 
@@ -16,6 +16,7 @@ type WorkspaceContextValue = {
   saveCandidate: (candidate: Candidate) => Promise<void>;
   saveApplication: (application: Application) => Promise<void>;
   addJob: (job: Job) => Promise<void>;
+  deleteJob: (jobId: string) => Promise<void>;
   addCandidate: (candidate: Candidate) => Promise<void>;
   uploadCv: (candidate: Candidate, file: File) => Promise<void>;
 };
@@ -64,6 +65,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       await safeSync(() => persistApplication(application));
     },
     addJob: async (job) => { setJobs((items) => [job, ...items]); await safeSync(() => persistJob(job)); },
+    deleteJob: async (jobId) => {
+      setJobs((items) => items.filter((job) => job.id !== jobId));
+      setCandidates((items) => items.map((candidate) => {
+        if (!candidate.applications[jobId]) return candidate;
+        const { [jobId]: _removed, ...applications } = candidate.applications;
+        return { ...candidate, applications } }));
+      await safeSync(() => deleteJobRecord(jobId));
+    },
     addCandidate: async (candidate) => { setCandidates((items) => [candidate, ...items]); await safeSync(() => persistCandidate(candidate)); },
     uploadCv: async (candidate, file) => {
       if (syncStatus !== 'connected') return;

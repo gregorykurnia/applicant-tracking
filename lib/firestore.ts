@@ -1,5 +1,5 @@
 import { signInAnonymously } from 'firebase/auth';
-import { collection, doc, getDocs, setDoc } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDocs, query, setDoc, where } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { auth, db, storage } from '@/lib/firebase';
 import { demoCandidates, demoJobs } from '@/lib/mock-data';
@@ -15,6 +15,14 @@ function cleanRecord<T>(value: T): T {
 
 export async function persistJob(job: Job) {
   await setDoc(doc(db, 'jobs', job.id), cleanRecord(job), { merge: true });
+}
+
+export async function deleteJob(jobId: string) {
+  const applications = await getDocs(query(collection(db, 'applications'), where('jobId', '==', jobId)));
+  await Promise.all([
+    deleteDoc(doc(db, 'jobs', jobId)),
+    ...applications.docs.map((application) => deleteDoc(application.ref)),
+  ]);
 }
 
 export async function persistApplication(application: Application) {
